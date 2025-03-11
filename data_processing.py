@@ -85,9 +85,11 @@ def load_dgraphfin(path_to_folder: str=".") -> Tuple[Data, int]:
 
     return dataset, NUM_CLASSES
 
-def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, file_name: str=None, timestep: int=1) -> Tuple[Data, int]:
+def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, file_name: str=None, timestep: int|tuple[int,int]=1) -> Tuple[Data, int]:
     """
     Load the Elliptic++ dataset from disk and create a `torch_geometric.data.Data`
+
+    timestep can either be a singular timestep of type `int` or a range in the form of a tuple
     """
     NUM_CLASSES = 2
     addr2addr = os.path.join(path_to_folder, "Elliptic++Dataset/AddrAddr_edgelist.csv")
@@ -95,9 +97,17 @@ def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, fi
 
     addr2addr_df = pd.read_csv(addr2addr)
     wallets_features_classes_df = pd.read_csv(wallets_features_classes)
-    wallets_features_classes_df = wallets_features_classes_df[
-        wallets_features_classes_df["Time step"] == timestep
-    ]
+
+    if isinstance(timestep, tuple):
+        timestep_left, timestep_right = timestep
+
+        wallets_features_classes_df = wallets_features_classes_df[
+            (wallets_features_classes_df["Time step"] >= timestep_left) & (wallets_features_classes_df["Time step"] <= timestep_right)
+        ]
+    else:
+        wallets_features_classes_df = wallets_features_classes_df[
+            wallets_features_classes_df["Time step"] == timestep
+        ]
     y_label_wallet = torch.as_tensor(wallets_features_classes_df["class"].tolist())
     y_label_wallet -= 1 # pytorch expects class labels in the range of [0, num_classes-1]
     wallets_features_classes_df = wallets_features_classes_df.drop(["class", "Time step"], axis=1)
