@@ -1,13 +1,21 @@
 # SMCS_FraudDetection
 
+---
 ## Environment Setup
 
-Due to Pytorch's version conflicts with other packages, we recommend that you replicate our environment using `setup_env.sh`, which can be used in two ways:
+Due to Pytorch's version conflicts with other packages, we recommend that you replicate our environment using `setup_env.sh`, which can be used in two ways, depending on the desired hardware:
+
+### CPU 
 
 ```
 bash setup_env.sh -d cpu
 ```
 
+### GPU
 ```
 bash setup_env.sh -d gpu -c cu124
 ```
+
+`-c` is the CUDA version (when using NVIDIA GPUs) currently installed and used by your GPU's drivers. Use the version you see when running `nvidia-smi`.
+
+---
