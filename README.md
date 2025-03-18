@@ -3,6 +3,8 @@
 ---
 ## Environment Setup
 
+***Be sure to first create and activate your Python environment! (via Conda or Python's virtual environments)***
+
 Due to Pytorch's version conflicts with other packages, we recommend that you replicate our environment using `setup_env.sh`, which can be used in two ways, depending on the desired hardware:
 
 ### CPU 
