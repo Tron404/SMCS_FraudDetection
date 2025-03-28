@@ -10,8 +10,6 @@ from typing import Literal, Tuple, Iterable
 
 ### CREATE GRAPH
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 def make_node(data: pd.DataFrame, **kwargs) -> Tuple[torch.Tensor, dict]:
     """
     Create a graph-node tensor based on some given features, and create an address->index mapping
@@ -58,9 +56,9 @@ def make_graph(feature_df: pd.DataFrame, edge_df: pd.DataFrame, y_labels: Iterab
         y_labels = torch.as_tensor(y_labels)
 
     graph = Data()
-    graph.x = x_features
-    graph.y = y_labels
-    graph.edge_index = edge_index
+    graph.x = x_features.contiguous()
+    graph.y = y_labels.contiguous()
+    graph.edge_index = edge_index.contiguous()
 
     if save_to_disk:
         if file_name is None:
@@ -78,9 +76,9 @@ def load_dgraphfin(path_to_folder: str=".") -> Tuple[Data, int]:
     Load the DGraphFin dataset from disk
     """
     NUM_CLASSES = 2
-    dataset = DGraphFin(root=os.path.join(path_to_folder, "dataset"))[0].to(DEVICE)
+    dataset = DGraphFin(root=os.path.join(path_to_folder, "dataset"))[0]
     dataset.pop("edge_type")
-    dataset.pop("edge_time") # @TODO: check how the edges change over time (if at all?)
+    # dataset.pop("edge_time") # @TODO: check how the edges change over time (if at all?)
     dataset.x = normalize_column(dataset.x, norm_type="z-score")
 
     return dataset, NUM_CLASSES
@@ -109,12 +107,18 @@ def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, fi
             wallets_features_classes_df["Time step"] == timestep
         ]
     y_label_wallet = torch.as_tensor(wallets_features_classes_df["class"].tolist())
-    y_label_wallet -= 1 # pytorch expects class labels in the range of [0, num_classes-1]
+    # y_label_wallet -= 1 # pytorch expects class labels in the range of [0, num_classes-1]
+
+    original_labels = torch.tensor([1,2,3]) # illicit, licit, unknown
+    replace_labels = torch.tensor([1,0,2])
+
+    y_label_wallet = torch.where(y_label_wallet.unsqueeze(1) == original_labels, replace_labels, -1)
+    y_label_wallet = y_label_wallet.max(dim=1)[0]
+
     wallets_features_classes_df = wallets_features_classes_df.drop(["class", "Time step"], axis=1)
     wallets_features_classes_df.reset_index(drop=True, inplace=True)
 
-    dataset = make_graph(wallets_features_classes_df, addr2addr_df, y_label_wallet, save_to_disk=save_to_disk, file_name=file_name).to(DEVICE)
-    dataset = make_masks(dataset, labels_to_remove=[2])
+    dataset = make_graph(wallets_features_classes_df, addr2addr_df, y_label_wallet, save_to_disk=save_to_disk, file_name=file_name)
 
     return dataset, NUM_CLASSES
 
