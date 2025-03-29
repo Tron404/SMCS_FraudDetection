@@ -21,3 +21,10 @@ bash setup_env.sh -d gpu -c cu124
 `-c` is the CUDA version (when using NVIDIA GPUs) currently installed and used by your GPU's drivers. Use the version you see when running `nvidia-smi`.
 
 ---
+
+## Training a model
+```
+bash model_training.sh
+```
+
+Inside the script you can change the training environment, data, model, etc.
