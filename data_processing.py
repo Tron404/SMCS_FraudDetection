@@ -6,7 +6,7 @@ from torch_geometric.data import Data
 from torch_geometric.datasets import DGraphFin
 from torch_geometric.loader import NeighborLoader
 from torch_geometric.transforms import RandomNodeSplit
-from typing import Literal, Tuple, Iterable
+from typing import Literal, Tuple, Iterable, Optional
 
 ### CREATE GRAPH
 
@@ -83,44 +83,44 @@ def load_dgraphfin(path_to_folder: str=".") -> Tuple[Data, int]:
 
     return dataset, NUM_CLASSES
 
-def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, file_name: str=None, timestep: int|tuple[int,int]=1) -> Tuple[Data, int]:
+def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, file_name: str=None, load_test_data: bool=False) -> Tuple[Data, Data, Optional[Data], int]:
     """
     Load the Elliptic++ dataset from disk and create a `torch_geometric.data.Data`
 
     timestep can either be a singular timestep of type `int` or a range in the form of a tuple
     """
+    def create_timestep_data(data_df: pd.DataFrame, address_df: pd.DataFrame, time_range: Tuple[int, int]) -> pd.DataFrame:
+        timestep_left, timestep_right = time_range
+
+        data_df = data_df[
+            (data_df["Time step"] >= timestep_left) & (data_df["Time step"] <= timestep_right)
+        ]
+
+        y_label_wallet = torch.as_tensor(data_df["class"].tolist())
+        data_df = data_df.drop(["class", "Time step"], axis=1)
+        data_df.reset_index(drop=True, inplace=True)
+        dataset = make_graph(data_df, address_df, y_label_wallet, save_to_disk=save_to_disk, file_name=file_name)
+
+        return dataset
+
     NUM_CLASSES = 2
     addr2addr = os.path.join(path_to_folder, "Elliptic++Dataset/AddrAddr_edgelist.csv")
     wallets_features_classes = os.path.join(path_to_folder, "Elliptic++Dataset/wallets_features_classes_combined.csv")
 
     addr2addr_df = pd.read_csv(addr2addr)
     wallets_features_classes_df = pd.read_csv(wallets_features_classes)
+    wallets_features_classes_df["class"] = wallets_features_classes_df["class"].replace([1,2,3],[1,0,2])
 
-    if isinstance(timestep, tuple):
-        timestep_left, timestep_right = timestep
+    train_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (1,32))
+    valid_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (33,37))
 
-        wallets_features_classes_df = wallets_features_classes_df[
-            (wallets_features_classes_df["Time step"] >= timestep_left) & (wallets_features_classes_df["Time step"] <= timestep_right)
-        ]
+    if load_test_data:
+        test_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (38,42))
+        return_items = train_dataset, valid_dataset, test_dataset, NUM_CLASSES
     else:
-        wallets_features_classes_df = wallets_features_classes_df[
-            wallets_features_classes_df["Time step"] == timestep
-        ]
-    y_label_wallet = torch.as_tensor(wallets_features_classes_df["class"].tolist())
-    # y_label_wallet -= 1 # pytorch expects class labels in the range of [0, num_classes-1]
+        return_items = train_dataset, valid_dataset, NUM_CLASSES
 
-    original_labels = torch.tensor([1,2,3]) # illicit, licit, unknown
-    replace_labels = torch.tensor([1,0,2])
-
-    y_label_wallet = torch.where(y_label_wallet.unsqueeze(1) == original_labels, replace_labels, -1)
-    y_label_wallet = y_label_wallet.max(dim=1)[0]
-
-    wallets_features_classes_df = wallets_features_classes_df.drop(["class", "Time step"], axis=1)
-    wallets_features_classes_df.reset_index(drop=True, inplace=True)
-
-    dataset = make_graph(wallets_features_classes_df, addr2addr_df, y_label_wallet, save_to_disk=save_to_disk, file_name=file_name)
-
-    return dataset, NUM_CLASSES
+    return return_items
 
 ### PROCESS DATASETS
 
