@@ -2,3 +2,6 @@ Elliptic*
 dataset/*
 DGraphFin_baseline/*
 *.pt
+model_checkpoints*/
+__pycache__
+experiments/

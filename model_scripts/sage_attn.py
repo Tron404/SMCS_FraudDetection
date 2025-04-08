@@ -1,35 +1,48 @@
-import torch.nn.functional as F
 import torch
-from torch.nn import Linear, ParameterList, Module
-from torch_geometric.nn import SAGEConv, GATConv
+import torch.nn.functional as F
 
-class SAGE_ATTN(Module):
+from .base_gnn import BaseGNN
+from torch.nn import Linear, ParameterList, ELU, ReLU
+from torch_geometric.nn import SAGEConv, GATConv, BatchNorm, MessagePassing
+
+class SAGE_ATTN(BaseGNN):
     def __init__(self, in_dim, out_dim, **layer_paras):
         super().__init__()
 
-        # self.num_layers = layer_paras.pop("num_layers",1)
-        self.hidden_dim = layer_paras.pop("hidden_size")
-        # self.cached = layer_paras.pop("cached", True)
-
-        # self.dropout = layer_paras.pop("dropout", 0.0)
+        self.conv_size = layer_paras.pop("conv_size")
+        self.mlp_size = layer_paras.pop("mlp_size")
 
         self.conv_layers = []
-        self.conv_layers += [SAGEConv(in_dim, self.hidden_dim)]
-        self.conv_layers += [GATConv(self.hidden_dim, self.hidden_dim, heads=1)]
+        self.conv_layers += [SAGEConv(in_dim, self.conv_size, normalize=False)]
+        self.conv_layers += [
+                            GATConv(self.conv_size, self.conv_size, heads=6, concat=False),
+                            ELU(),
+                            BatchNorm(self.conv_size),
+                            ]
 
         self.conv_layers = ParameterList(self.conv_layers)
 
-        self.mlp1 = Linear(self.hidden_dim, self.hidden_dim//2)
-        self.mlp2 = Linear(self.hidden_dim//2, out_dim)
+        self.mlp_layers = []
+        self.mlp_layers += [
+                            Linear(self.conv_size, self.mlp_size),
+                            ReLU(),
+                            Linear(self.mlp_size, self.mlp_size//2),
+                            ReLU(),
+                            Linear(self.mlp_size//2, out_dim, bias=False)
+                           ]
+        self.mlp_layers = ParameterList(self.mlp_layers)
+
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
-        for conv in self.conv_layers:
-            x = conv(x, edge_index)
-            x = F.relu(x)
-            # x = F.dropout(x, training=self.training, p=self.dropout)
-        x = self.mlp1(x)
+        x = self.conv_layers[0](x, edge_index)
         x = F.relu(x)
-        
-        x = self.mlp2(x)
+        for conv_op in self.conv_layers[1:]:
+            if isinstance(conv_op, MessagePassing):
+                x = conv_op(x, edge_index) # do convolution
+            else:
+                x = conv_op(x)
+
+        for mlp_layer in self.mlp_layers:
+            x = mlp_layer(x)
 
         return x

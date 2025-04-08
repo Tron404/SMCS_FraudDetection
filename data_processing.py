@@ -4,8 +4,6 @@ import torch
 
 from torch_geometric.data import Data
 from torch_geometric.datasets import DGraphFin
-from torch_geometric.loader import NeighborLoader
-from torch_geometric.transforms import RandomNodeSplit
 from typing import Literal, Tuple, Iterable, Optional
 
 ### CREATE GRAPH
@@ -27,23 +25,6 @@ def make_edge(data: pd.DataFrame, address_mapping: dict) -> torch.Tensor:
     edge_index = torch.as_tensor([[address_mapping[input_node], address_mapping[output_node]] for input_node, output_node in zip(data["input_address"], data["output_address"]) if input_node in address_mapping.keys() and output_node in address_mapping.keys()])
 
     return edge_index.T
-
-def make_masks(graph: Data, labels_to_remove: list[int]=None) -> Data:
-    """
-    Create a training, validation, and testing mask for binary node classification;
-    Done because some node labels represent unknown/structural nodes that hold no label of interest
-    """
-    node_split = RandomNodeSplit(num_val=0.1, num_test=0.5)
-    graph = node_split(graph)
-
-    if labels_to_remove:
-        assert len(set(graph.y.tolist())) - len(labels_to_remove) == 2, f"Expected {len(set(graph.y.tolist()))-2} labels, but got {len(labels_to_remove)} - necessary for binary classification"
-        for label_to_remove in labels_to_remove:
-            graph.train_mask[torch.where(graph.y == label_to_remove)] = False # remove unknown-class nodes from mask
-            graph.test_mask[torch.where(graph.y == label_to_remove)] = False 
-            graph.val_mask[torch.where(graph.y == label_to_remove)] = False 
-    
-    return graph
 
 def make_graph(feature_df: pd.DataFrame, edge_df: pd.DataFrame, y_labels: Iterable, save_to_disk: bool=False, file_name: str=None) -> Data:
     """
@@ -83,7 +64,7 @@ def load_dgraphfin(path_to_folder: str=".") -> Tuple[Data, int]:
 
     return dataset, NUM_CLASSES
 
-def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, file_name: str=None, load_test_data: bool=False) -> Tuple[Data, Data, Optional[Data], int]:
+def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, file_name: str=None, load_test_data: bool=False, scale_data: bool=True) -> Tuple[Data, Data, Optional[Data], int]:
     """
     Load the Elliptic++ dataset from disk and create a `torch_geometric.data.Data`
 
@@ -110,14 +91,19 @@ def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, fi
     addr2addr_df = pd.read_csv(addr2addr)
     wallets_features_classes_df = pd.read_csv(wallets_features_classes)
     wallets_features_classes_df["class"] = wallets_features_classes_df["class"].replace([1,2,3],[1,0,2])
+    wallets_features_classes_df = wallets_features_classes_df[wallets_features_classes_df["class"] != 2] # !!! RAMON TALKED ABOUT THIS, ALSO AUTHORS DO THIS FOR WALLET CLASSIFICATION
+    
+    if scale_data:
+        wallets_features_classes_df.loc[:, ~wallets_features_classes_df.columns.isin(["address", "Time step", "class"])] = normalize_column(wallets_features_classes_df.loc[:, ~wallets_features_classes_df.columns.isin(["address", "Time step", "class"])].to_numpy(), norm_type="z-score").numpy()
 
-    train_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (1,32))
-    valid_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (33,37))
 
     if load_test_data:
+        train_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (1,37))
         test_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (38,42))
-        return_items = train_dataset, valid_dataset, test_dataset, NUM_CLASSES
+        return_items = train_dataset, test_dataset, NUM_CLASSES
     else:
+        train_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (1,32))
+        valid_dataset = create_timestep_data(wallets_features_classes_df, addr2addr_df, (33,37))
         return_items = train_dataset, valid_dataset, NUM_CLASSES
 
     return return_items
@@ -126,7 +112,7 @@ def load_create_ellipticpp(path_to_folder: str=".", save_to_disk: bool=False, fi
 
 def normalize_column(data_feature: Iterable, norm_type: Literal["z-score", "min-max"]="z-score") -> torch.Tensor:
     """
-    Normalize a 1D Iterable (e.g., list, or 1D tensor) based on some scorign method
+    Normalize a 1D Iterable (e.g., list, or 1D tensor) based on some scoring method
     """
     def z_scoring(x: torch.Tensor):
         return (x - x.mean(dim=0))/x.std(dim=0)
@@ -147,17 +133,3 @@ def normalize_column(data_feature: Iterable, norm_type: Literal["z-score", "min-
             raise NotImplemented
 
     return data_feature
-
-def split_into_batches(graph: Data, num_batches: int, num_neighbours: int, num_hops: int, shuffle: bool=False) -> NeighborLoader:
-    """
-    Split a graph of type torch_geometric.data.Data into batches
-    """
-    loader = NeighborLoader(
-        data=graph,
-        num_neighbors=[num_neighbours] * num_hops,
-        batch_size=num_batches,
-        replace=False,
-        shuffle=shuffle
-    )
-
-    return loader

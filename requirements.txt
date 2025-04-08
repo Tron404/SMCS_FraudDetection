@@ -1,8 +1,0 @@
-pandas==2.2.3
-pyg_lib==0.4.0
-seaborn==0.13.2
-torch==2.4.0
-torch-geometric==2.6.1
-torch_scatter==2.1.2
-torch_sparse==0.6.18
-scikit-learn==1.6.1
