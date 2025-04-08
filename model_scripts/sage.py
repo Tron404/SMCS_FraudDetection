@@ -30,6 +30,8 @@ class SAGE(BaseGNN):
         self.mlp_layers = ParameterList(self.mlp_layers)
 
 
+        self.mlp1 = Linear(self.hidden_dim, self.hidden_dim//2)
+        self.mlp2 = Linear(self.hidden_dim//2, out_dim)
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         for conv in self.conv_layers:
             x = conv(x, edge_index)
